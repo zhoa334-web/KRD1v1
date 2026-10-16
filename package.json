@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
+    "firebase": "^13.0.0",
     "socket.io": "^4.7.5"
   },
   "optionalDependencies": {
