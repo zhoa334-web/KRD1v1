@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>CYBER ARENA // 1v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05070d; --panel:rgba(10,18,34,.78); --line:rgba(0,229,255,.35);
+  --cyan:#00e5ff; --magenta:#ff2a8a; --green:#39ff14; --warn:#ffb800; --text:#d8f6ff; --dim:#6f8aa0;
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;overflow:hidden;touch-action:none}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none}
+h1,h2,h3,.orb{font-family:'Orbitron',sans-serif;letter-spacing:.12em;text-transform:uppercase;margin:0}
+.hidden{display:none!important}
+
+/* ---------- panels / buttons ---------- */
+.panel{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,18px 100%,0 calc(100% - 18px));padding:22px;box-shadow:0 0 30px rgba(0,229,255,.08) inset}
+.btn{font:700 16px 'Orbitron',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);background:rgba(0,229,255,.06);
+  border:1px solid var(--cyan);padding:13px 20px;cursor:pointer;transition:.15s;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))}
+.btn:hover,.btn:focus-visible{background:var(--cyan);color:#001018;box-shadow:0 0 22px var(--cyan);outline:none}
+.btn.hot{color:var(--magenta);border-color:var(--magenta);background:rgba(255,42,138,.07)}
+.btn.hot:hover{background:var(--magenta);color:#14000a;box-shadow:0 0 22px var(--magenta)}
+.btn.small{font-size:12px;padding:8px 12px}
+.btn:disabled{opacity:.4;pointer-events:none}
+input[type=text],input[type=email],input[type=password]{width:100%;padding:12px;margin:6px 0;background:rgba(0,0,0,.45);border:1px solid var(--line);color:var(--text);font:600 16px 'Rajdhani';outline:none;user-select:text;-webkit-user-select:text}
+input:focus{border-color:var(--cyan);box-shadow:0 0 12px rgba(0,229,255,.4)}
+.dim{color:var(--dim)} .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap} .grow{flex:1}
+
+/* ---------- auth ---------- */
+#auth{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 30%,rgba(0,229,255,.12),rgba(5,7,13,.96) 70%);z-index:50;padding:16px}
+#auth .panel{width:min(420px,100%)} #auth h1{font-size:30px;color:var(--cyan);text-shadow:0 0 18px var(--cyan);margin-bottom:4px}
+#auth-msg{min-height:20px;color:var(--warn);font-size:14px;margin:6px 0}
+
+/* ---------- app shell ---------- */
+#app{position:fixed;inset:0;z-index:10;pointer-events:none;display:flex;flex-direction:column}
+#app.in-match{display:none}
+#topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 22px;pointer-events:auto;
+  background:linear-gradient(#05070dcc,transparent)}
+#logo{font:900 22px 'Orbitron';letter-spacing:.2em;color:var(--cyan);text-shadow:0 0 14px var(--cyan)} #logo b{color:var(--magenta)}
+#user-chip{display:flex;gap:14px;align-items:center;font-size:15px}
+#user-chip .coins{color:var(--warn);font-family:'Orbitron';font-size:14px}
+.screen{display:none;flex:1;pointer-events:none;padding:10px 22px 22px;overflow:auto}
+.screen.active{display:flex}.screen>*{pointer-events:auto}
+#scr-menu{align-items:center}
+#menu-nav{display:flex;flex-direction:column;gap:12px;width:min(320px,100%)}
+#menu-nav .btn{text-align:left;font-size:18px;padding:16px 22px}
+.back{margin-bottom:12px;align-self:flex-start}
+.page{width:min(900px,100%);margin:0 auto;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:14px}
+.page h2{color:var(--cyan);font-size:22px}
+
+/* ---------- play / friends / custom ---------- */
+#queue-status{font:600 18px 'Orbitron';letter-spacing:.1em;color:var(--warn);min-height:26px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px} @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+.list{display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto}
+.item{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid rgba(0,229,255,.2);background:rgba(0,0,0,.3)}
+.dot{width:10px;height:10px;border-radius:50%;background:#444;box-shadow:0 0 0 1px #000 inset} .dot.on{background:var(--green);box-shadow:0 0 10px var(--green)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.card{border:1px solid rgba(0,229,255,.25);padding:12px;cursor:pointer;background:rgba(0,0,0,.35);transition:.15s;position:relative}
+.card:hover{border-color:var(--cyan)} .card.sel{border-color:var(--magenta);box-shadow:0 0 18px rgba(255,42,138,.45) inset,0 0 14px rgba(255,42,138,.3)}
+.card h3{font-size:13px;margin-bottom:6px} .card .stat{font-size:13px;color:var(--dim)}
+.bar{height:6px;background:#12202e;margin-top:3px}.bar i{display:block;height:100%;background:var(--cyan)}
+.swatch{height:26px;margin-bottom:8px;border:1px solid #000}
+.tag{position:absolute;top:8px;right:8px;font:700 10px 'Orbitron';padding:2px 6px;border:1px solid}
+.r-common{color:#9fb3c8}.r-rare{color:#4da3ff}.r-epic{color:#c77dff}.r-legendary{color:#ffb800}
+#party-toast{position:fixed;right:18px;bottom:18px;z-index:40;pointer-events:auto;width:min(320px,90vw)}
+.toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:60;background:var(--panel);border:1px solid var(--warn);padding:10px 18px;pointer-events:none;font-weight:700}
+
+/* ---------- settings ---------- */
+.switch{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(0,229,255,.12)}
+.switch input{width:22px;height:22px;accent-color:var(--cyan)}
+.bind{display:flex;justify-content:space-between;align-items:center;padding:6px 0}
+.keycap{min-width:110px;text-align:center;font:700 13px 'Orbitron';padding:8px 10px;border:1px solid var(--cyan);color:var(--cyan);background:rgba(0,229,255,.06);cursor:pointer}
+.keycap:hover{background:var(--cyan);color:#001018}
+#remap-modal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center}
+#remap-modal .panel{text-align:center;min-width:280px}
+#remap-modal .big{font:900 22px 'Orbitron';color:var(--magenta);margin:12px 0;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.35}}
+
+/* ---------- HUD ---------- */
+#hud{position:fixed;inset:0;z-index:20;pointer-events:none;display:none}
+#hud.on{display:block}
+.hp-wrap{position:absolute;top:14px;width:min(40vw,440px)}
+#hp-l-wrap{left:14px} #hp-r-wrap{right:14px;text-align:right}
+.hp-name{font:700 14px 'Orbitron';letter-spacing:.12em}
+.hp-bar{height:18px;background:rgba(0,0,0,.6);border:1px solid var(--line);transform:skewX(-18deg);overflow:hidden;margin-top:4px}
+.hp-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--cyan));transition:width .12s}
+#hp-r-wrap .hp-bar i{margin-left:auto;background:linear-gradient(270deg,var(--magenta),var(--warn))}
+#hp-r-wrap .hp-bar i{display:block}
+.st-bar{height:5px;background:rgba(0,0,0,.6);margin-top:4px}.st-bar i{display:block;height:100%;background:var(--warn);transition:width .1s}
+#score{position:absolute;top:12px;left:50%;transform:translateX(-50%);font:900 26px 'Orbitron';text-shadow:0 0 12px var(--cyan);text-align:center}
+#score small{display:block;font-size:11px;color:var(--dim);letter-spacing:.2em}
+#banner{position:absolute;top:34%;left:0;right:0;text-align:center;font:900 clamp(34px,8vw,84px) 'Orbitron';letter-spacing:.15em;color:#fff;text-shadow:0 0 30px var(--cyan),0 0 60px var(--magenta);opacity:0;transition:opacity .2s}
+#banner.show{opacity:1}
+#ping{position:absolute;bottom:8px;left:12px;font:600 12px 'Rajdhani';color:var(--dim)}
+#hud-menu-btn{position:absolute;top:60px;right:14px;pointer-events:auto}
+#dmg-flash{position:fixed;inset:0;pointer-events:none;background:radial-gradient(transparent 55%,rgba(255,0,60,.55));opacity:0;transition:opacity .25s;z-index:19}
+
+/* ---------- touch controls ---------- */
+#touch-layer{position:fixed;inset:0;z-index:25;pointer-events:none;display:none}
+body.touch.match #touch-layer{display:block}
+#joy-zone{position:absolute;left:0;bottom:0;width:48%;height:58%;pointer-events:auto;touch-action:none}
+#joy-base{position:absolute;width:128px;height:128px;border-radius:50%;border:2px solid var(--cyan);background:rgba(0,229,255,.08);box-shadow:0 0 20px rgba(0,229,255,.3) inset;
+  left:34px;bottom:calc(34px + var(--safe-b));opacity:.55}
+#joy-knob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:radial-gradient(var(--cyan),#007a8a);box-shadow:0 0 18px var(--cyan)}
+.tbtn{position:absolute;pointer-events:auto;touch-action:none;border-radius:50%;border:2px solid var(--cyan);background:rgba(0,229,255,.12);color:var(--cyan);
+  font:700 11px 'Orbitron';display:flex;align-items:center;justify-content:center;letter-spacing:.06em;text-shadow:0 0 8px currentColor}
+.tbtn.active{background:var(--cyan);color:#001018}
+#tb-attack{right:30px;bottom:calc(60px + var(--safe-b));width:92px;height:92px;border-color:var(--magenta);color:var(--magenta);font-size:13px}
+#tb-heavy{right:136px;bottom:calc(30px + var(--safe-b));width:68px;height:68px;border-color:var(--warn);color:var(--warn)}
+#tb-block{right:116px;bottom:calc(112px + var(--safe-b));width:68px;height:68px}
+#tb-jump{right:30px;bottom:calc(168px + var(--safe-b));width:64px;height:64px}
+#tb-dash{right:100px;bottom:calc(196px + var(--safe-b));width:60px;height:60px;border-color:var(--green);color:var(--green)}
+#tb-attack.active{background:var(--magenta)} #tb-heavy.active{background:var(--warn)} #tb-dash.active{background:var(--green)}
+
+@media(max-width:720px){#topbar{padding:10px 12px}#logo{font-size:16px}.screen{padding:6px 12px 16px}.panel{padding:16px}#user-chip{font-size:13px;gap:8px}}
+#rotate-hint{display:none}
+@media(orientation:portrait) and (max-width:720px){body.match #rotate-hint{display:block;position:fixed;top:56px;left:0;right:0;text-align:center;z-index:30;color:var(--warn);font-weight:700}}
+</style>
+</head>
+<body>
+<canvas id="gl" tabindex="0"></canvas>
+
+<!-- ============ AUTH ============ -->
+<div id="auth">
+  <div class="panel">
+    <h1>Cyber<b style="color:var(--magenta)">Arena</b></h1>
+    <div class="dim" style="margin-bottom:12px">1v1 weapon combat // sign in to save your inventory</div>
+    <input id="auth-name" type="text" placeholder="Display name (register)" maxlength="20" autocomplete="nickname">
+    <input id="auth-email" type="email" placeholder="Email" autocomplete="email">
+    <input id="auth-pass" type="password" placeholder="Password (6+ chars)" autocomplete="current-password">
+    <div id="auth-msg"></div>
+    <div class="row">
+      <button class="btn grow" id="btn-login">Sign in</button>
+      <button class="btn grow hot" id="btn-register">Register</button>
+    </div>
+    <button class="btn small" id="btn-guest" style="width:100%;margin-top:10px">Play as guest</button>
+  </div>
+</div>
+
+<!-- ============ APP / MENUS ============ -->
+<div id="app" class="hidden">
+  <div id="topbar">
+    <div id="logo">CYBER<b>ARENA</b></div>
+    <div id="user-chip"><span id="chip-name">—</span><span class="dim" id="chip-handle"></span><span class="coins" id="chip-coins">0 ◈</span>
+      <button class="btn small" id="btn-logout">Logout</button></div>
+  </div>
+
+  <section class="screen active" id="scr-menu">
+    <div id="menu-nav">
+      <button class="btn hot" data-go="play">▶ Play Match</button>
+      <button class="btn" data-go="friends">Friends &amp; Party</button>
+      <button class="btn" data-go="custom">Character &amp; Skins</button>
+      <button class="btn" data-go="settings">Settings</button>
+    </div>
+  </section>
+
+  <section class="screen" id="scr-play">
+    <div class="page panel">
+      <button class="btn small back" data-go="menu">◀ Back</button>
+      <h2>Ranked Quickmatch</h2>
+      <div class="dim">First to 2 round wins. Knock your opponent off the platform or drain their HP.</div>
+      <div id="play-loadout" class="item"></div>
+      <div id="queue-status"></div>
+      <div class="row"><button class="btn hot" id="btn-queue">Find match</button><button class="btn hidden" id="btn-cancel">Cancel</button></div>
+    </div>
+  </section>
+
+  <section class="screen" id="scr-friends">
+    <div class="page">
+      <button class="btn small back" data-go="menu">◀ Back</button>
+      <div class="grid2">
+        <div class="panel">
+          <h2>Friends</h2>
+          <div class="row" style="margin:10px 0"><input id="friend-search" type="text" placeholder="Enter user ID (e.g. nova_4821)" class="grow"><button class="btn small" id="btn-friend-add">Add</button></div>
+          <div id="friend-msg" class="dim" style="min-height:18px"></div>
+          <div class="list" id="friend-list"></div>
+          <h3 style="margin:14px 0 8px;font-size:13px;color:var(--magenta)">Requests</h3>
+          <div class="list" id="request-list"></div>
+        </div>
+        <div class="panel">
+          <h2>Party</h2>
+          <div class="dim" style="margin:8px 0 12px">Create a party, invite an online friend, then the leader starts a private 1v1.</div>
+          <div class="list" id="party-members"></div>
+          <div class="row" style="margin-top:12px">
+            <button class="btn small" id="btn-party-create">Create</button>
+            <button class="btn small hot" id="btn-party-start" disabled>Start match</button>
+            <button class="btn small" id="btn-party-leave" disabled>Leave</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="scr-custom">
+    <div class="page panel">
+      <button class="btn small back" data-go="menu">◀ Back</button>
+      <h2>Archetype</h2><div class="cards" id="arch-list"></div>
+      <h2>Skins</h2><div class="dim">Preview updates live on the platform behind this panel. Earn ◈ by playing matches.</div>
+      <div class="cards" id="skin-list"></div>
+    </div>
+  </section>
+
+  <section class="screen" id="scr-settings">
+    <div class="page panel">
+      <button class="btn small back" data-go="menu">◀ Back</button>
+      <h2>Audio</h2>
+      <label class="switch"><span>Sound effects</span><input type="checkbox" id="opt-sfx"></label>
+      <label class="switch"><span>Music</span><input type="checkbox" id="opt-music"></label>
+      <h2 style="margin-top:10px">Controls</h2>
+      <label class="switch"><span>Force on-screen touch controls</span><input type="checkbox" id="opt-touch"></label>
+      <div id="keybind-list"></div>
+      <div class="row"><button class="btn small" id="btn-reset-binds">Reset to defaults</button></div>
+    </div>
+  </section>
+</div>
+
+<div id="party-toast"></div>
+
+<!-- ============ REMAP MODAL ============ -->
+<div id="remap-modal" class="hidden">
+  <div class="panel">
+    <div class="dim">Rebinding</div><div class="orb" id="remap-action" style="color:var(--cyan)"></div>
+    <div class="big">PRESS ANY KEY / MOUSE BUTTON</div>
+    <div class="dim">Esc to cancel</div>
+  </div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud">
+  <div class="hp-wrap" id="hp-l-wrap"><div class="hp-name" id="name-l">—</div><div class="hp-bar"><i id="hp-l" style="width:100%"></i></div><div class="st-bar"><i id="st-l" style="width:100%"></i></div></div>
+  <div id="score"><span id="sc-l">0</span> : <span id="sc-r">0</span><small>FIRST TO 2</small></div>
+  <div class="hp-wrap" id="hp-r-wrap"><div class="hp-name" id="name-r">—</div><div class="hp-bar"><i id="hp-r" style="width:100%"></i></div></div>
+  <div id="banner"></div>
+  <div id="ping"></div>
+  <button class="btn small hot" id="hud-menu-btn">Forfeit</button>
+</div>
+<div id="dmg-flash"></div>
+<div id="rotate-hint">↻ Rotate your phone for the best view</div>
+
+<!-- ============ TOUCH CONTROLS (auto-enabled on touch devices) ============ -->
+<div id="touch-layer">
+  <div id="joy-zone"><div id="joy-base"><div id="joy-knob"></div></div></div>
+  <div class="tbtn" id="tb-attack" data-act="attack">ATTACK</div>
+  <div class="tbtn" id="tb-heavy"  data-act="heavy">HEAVY</div>
+  <div class="tbtn" id="tb-block"  data-act="block">BLOCK</div>
+  <div class="tbtn" id="tb-jump"   data-act="jump">JUMP</div>
+  <div class="tbtn" id="tb-dash"   data-act="dash">DASH</div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+} }
+</script>
+<script>
+  // Works under Live Server ("Go Live") AND under `npm start`.
+  // Same-origin when served by the Node server (port 3000); otherwise point at the Node server on localhost:3000.
+  window.SERVER_URL = (location.port === '3000' || location.protocol === 'https:') ? location.origin : 'http://' + (location.hostname || 'localhost') + ':3000';
+  document.write('<script src="' + window.SERVER_URL + '/socket.io/socket.io.js"><\/script>');
+</script>
+<script src="shared.js"></script>
+<script type="module" src="main.js"></script>
+</body>
+</html>

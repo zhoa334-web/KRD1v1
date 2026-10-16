@@ -1,0 +1,14 @@
+{
+  "name": "cyber-arena-1v1",
+  "version": "1.0.0",
+  "description": "Browser 1v1 weapon fighting game (Three.js + Cannon-es + Socket.io + Firebase)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "optionalDependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+}
