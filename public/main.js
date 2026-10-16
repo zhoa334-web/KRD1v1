@@ -498,13 +498,19 @@ const Net = {
   loadLib() {
     if (window.io) return Promise.resolve(true);
     if (this._lib) return this._lib;
-    return (this._lib = new Promise((res) => {
-      const sc = document.createElement('script'); sc.src = window.SERVER_URL + '/socket.io/socket.io.js';
-      const t = setTimeout(() => { sc.remove(); this._lib = null; res(false); }, 70000);
-      sc.onload = () => { clearTimeout(t); res(!!window.io); };
-      sc.onerror = () => { clearTimeout(t); sc.remove(); this._lib = null; res(false); };
-      document.head.append(sc);
-    }));
+    const load = (src, ms) => new Promise((ok, no) => {
+      const sc = document.createElement('script'); sc.src = src; const t = setTimeout(() => { sc.remove(); no(new Error('timeout ' + src)); }, ms);
+      sc.onload = () => { clearTimeout(t); ok(); }; sc.onerror = () => { clearTimeout(t); sc.remove(); no(new Error('load ' + src)); }; document.head.append(sc);
+    });
+    return (this._lib = (async () => {
+      try {
+        if (window.NET_MODE === 'p2p') {              // free peer-to-peer mode (GitHub Pages)
+          if (!window.Peer) await load('https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js', 20000);
+          await load('gamecore.js', 20000); await load('p2p.js', 20000); window.io = window.P2P.io;
+        } else await load(window.SERVER_URL + '/socket.io/socket.io.js', 70000);   // Node server (free hosts can take ~1 min to wake)
+        return !!window.io;
+      } catch (e) { this._lib = null; return false; }
+    })());
   },
   connect() {
     if (this.connecting) return this.connecting;
@@ -515,7 +521,11 @@ const Net = {
       const token = await FB.getIdToken();
       const s = (this.socket = window.io(window.SERVER_URL, { auth: { token, uid: App.profile.uid, name: App.profile.name, handle: App.profile.handle || '' }, transports: ['websocket', 'polling'] }));
       s.on('connect', () => { this.setStatus(true); s.emit('loadout:set', loadout()); pollPresence(); });
-      s.on('disconnect', () => this.setStatus(false));
+      s.on('disconnect', () => {
+        this.setStatus(false); App.party = null; renderParty();
+        if (G.active && !G.ended) endMatch({ winner: null, reason: 'lost' });
+        else if (App.state === 'QUEUE') resetQueueUI();
+      });
       s.on('connect_error', (e) => { this.setStatus(false); if (Date.now() - this.lastErrToast > 6000) { this.lastErrToast = Date.now(); toast('Server: ' + e.message); } });
       s.on('toast', toast);
       s.on('party:state', (p) => { App.party = p; renderParty(); renderFriends(); });
@@ -538,7 +548,7 @@ const Net = {
     if (!this.socket) await this.connect();
     if (this.socket && !this.socket.connected) await new Promise((r) => { const t = setTimeout(r, 25000); this.socket.once('connect', () => { clearTimeout(t); r(); }); });
     if (this.socket?.connected) return true;
-    toast('Cannot reach the game server — check SERVER_URL in config.js'); return false;
+    toast('Cannot reach the lobby — check your internet and try again'); return false;
   },
   send(ev, ...args) { this.ready().then((ok) => ok && this.socket.emit(ev, ...args)); },
   disconnect() { clearInterval(this.pingTimer); clearInterval(this.sendTimer); this.socket?.disconnect(); this.socket = null; }
@@ -569,8 +579,8 @@ function cleanupMatch() {
 }
 function endMatch({ winner, reason }) {
   G.ended = true; const won = winner === G.myId;
-  setBanner(reason === 'forfeit' ? (won ? 'OPPONENT LEFT' : 'FORFEIT') : won ? 'VICTORY' : 'DEFEAT');
-  App.profile.coins += won ? 60 : 20;         // NOTE: award server-side (firebase-admin) in production to prevent cheating
+  setBanner(reason === 'lost' ? 'CONNECTION LOST' : reason === 'forfeit' ? (won ? 'OPPONENT LEFT' : 'FORFEIT') : won ? 'VICTORY' : 'DEFEAT');
+  if (reason !== 'lost') App.profile.coins += won ? 60 : 20;         // NOTE: award server-side (firebase-admin) in production to prevent cheating
   FB.saveProfile(App.profile.uid, { coins: App.profile.coins }).catch(() => {});
   setTimeout(() => { cleanupMatch(); setBanner(''); setState('MENU'); Preview.rebuild(); renderAllMenus(); }, 3500);
 }

@@ -261,10 +261,10 @@ body.touch.match #touch-layer{display:block}
 </script>
 <script src="config.js"></script>
 <script>
-  // Where the game server lives. Set SERVER_URL_OVERRIDE in config.js to your hosted URL (always-online).
-  // Otherwise: same origin when served by the Node server / https host; localhost:3000 when using Live Server.
   (function () {
-    var o = window.SERVER_URL_OVERRIDE;
+    var o = window.SERVER_URL_OVERRIDE, mode = window.NET_MODE || 'auto';
+    if (mode === 'auto') mode = (o || location.port === '3000' || /onrender\.com$/.test(location.hostname)) ? 'server' : 'p2p';
+    window.NET_MODE = mode;
     window.SERVER_URL = o ? String(o).replace(/\/+$/, '') :
       ((location.port === '3000' || location.protocol === 'https:') ? location.origin : 'http://' + (location.hostname || 'localhost') + ':3000');
   })();

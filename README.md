@@ -1,20 +1,14 @@
-# Cyber Arena 1v1 — always-online setup
+# Cyber Arena 1v1 — free, always-online on GitHub Pages
 
-The game needs its Node server running to do matchmaking, friends and parties.
-To make it **always online**, host the server once (free) and everyone just opens the hosted link.
+No Node server needed. Upload this folder to your GitHub repo and open your GitHub Pages link.
 
-## Deploy on Render (free, ~5 minutes)
-1. Put this `arena` folder in a GitHub repo (the folder containing `server.js` + `package.json` should be the repo root).
-2. render.com -> New -> Web Service -> pick the repo. Render reads `render.yaml`
-   (Build: `npm install`, Start: `npm start`). Click Deploy.
-3. You get a URL like `https://cyber-arena.onrender.com`. **Open that URL — that is the game.** Share it with friends.
-4. Optional: if you still use VS Code "Go Live", put that URL in `public/config.js`:
-   `window.SERVER_URL_OVERRIDE = 'https://cyber-arena.onrender.com';`
+How online works (free peer-to-peer): the first player to open the game becomes the "lobby host"
+(their browser runs the game server code); everyone else connects to them. If the host leaves, the
+others reconnect automatically and one becomes the new host. It is online whenever at least one player has the page open.
 
-Free tier note: Render's free plan sleeps after ~15 min without visitors and takes ~30-60 s to wake
-(the game shows "Connecting…" and retries by itself). To keep it awake, point a free pinger such as
-UptimeRobot at `https://YOUR-URL/health` every 5 minutes, or use a paid always-on plan.
-Railway, Fly.io and Glitch work too (start command `npm start`, uses the `PORT` env var).
+Tips
+- Test alone: open the link in 2 tabs, pick different guest names, add each other by the @name under your name, or press Find Match in both.
+- Rare strict networks may block WebRTC; try another Wi-Fi / mobile data.
+- A host's tab must stay open (browsers may slow background tabs).
 
-## Run locally
-`npm install` then `npm start` (or double-click `start.bat`) and open http://localhost:3000
+Optional: `npm install && npm start` runs the classic Node server version (NET_MODE auto-switches on localhost:3000). See public/config.js.
