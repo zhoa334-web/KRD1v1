@@ -37,15 +37,46 @@ const DEFAULT_PROFILE = () => ({
 });
 
 /* ================= offline fallback ================= */
+// No Firebase: profile lives in localStorage. The first tab keeps a persistent identity; extra tabs (for testing 2 players
+// on one PC) get a temporary identity so they don't collide with each other on the server.
 const LS = 'cyberarena.offline';
+const rnd = () => Math.random().toString(36).slice(2, 9);
 function offlineLoad() { try { return JSON.parse(localStorage.getItem(LS)); } catch { return null; } }
+function tabIdentity() {
+  let u = sessionStorage.getItem('ca.tabuid');
+  if (!u) {
+    const main = localStorage.getItem('ca.mainuid'), hb = +localStorage.getItem('ca.hb') || 0;
+    if (!main) { u = 'local_' + rnd(); localStorage.setItem('ca.mainuid', u); }
+    else if (Date.now() - hb > 4000) u = main;                 // no live tab owns the persistent identity -> take it
+    else u = 'local_' + rnd();                                  // another tab is live -> temporary identity
+    sessionStorage.setItem('ca.tabuid', u);
+  }
+  return { uid: u, main: u === localStorage.getItem('ca.mainuid') };
+}
 function offlineUser(name) {
-  let p = offlineLoad();
-  if (!p) { p = { uid: 'local_' + Math.random().toString(36).slice(2, 9), name: name || 'Guest', handle: '', ...DEFAULT_PROFILE() };
-            p.handle = (p.name.toLowerCase().replace(/\W/g, '') || 'guest') + '_' + Math.floor(1000 + Math.random() * 9000);
-            localStorage.setItem(LS, JSON.stringify(p)); }
+  const id = tabIdentity(); let p = offlineLoad() || { name: name || 'Guest', handle: '', ...DEFAULT_PROFILE() };
+  if (id.main) {
+    p.uid = id.uid; if (name) p.name = name; p.name = p.name || 'Guest';
+    p.handle = p.handle || ((p.name.toLowerCase().replace(/\W/g, '') || 'guest') + '_' + Math.floor(1000 + Math.random() * 9000));
+    localStorage.setItem(LS, JSON.stringify(p));
+    localStorage.setItem('ca.hb', Date.now()); setInterval(() => localStorage.setItem('ca.hb', Date.now()), 1500);
+  } else {
+    p = { ...p, uid: id.uid };
+    if (name) sessionStorage.setItem('ca.tabname', name);
+    p.name = sessionStorage.getItem('ca.tabname') || name || 'Guest';
+    let hd = sessionStorage.getItem('ca.tabhandle');
+    if (!hd) { hd = (p.name.toLowerCase().replace(/\W/g, '') || 'guest') + '_' + Math.floor(1000 + Math.random() * 9000); sessionStorage.setItem('ca.tabhandle', hd); }
+    p.handle = hd;
+  }
   return { user: { uid: p.uid, displayName: p.name, isAnonymous: true, offline: true }, profile: p };
 }
+const FK = (uid) => 'ca.friends.' + uid;
+export function addLocalFriend(uid, f) {
+  let l = []; try { l = JSON.parse(localStorage.getItem(FK(uid)) || '[]'); } catch {}
+  l = l.filter((x) => x.uid !== f.uid); l.push({ uid: f.uid, name: f.name, handle: f.handle });
+  localStorage.setItem(FK(uid), JSON.stringify(l));
+}
+function localFriends(uid) { try { return JSON.parse(localStorage.getItem(FK(uid)) || '[]'); } catch { return []; } }
 
 /* ================= auth ================= */
 const listeners = new Set();
@@ -76,7 +107,7 @@ export async function getIdToken(user) { try { return CONFIGURED && auth.current
 
 /** Restore a previous session on page load. */
 export function restoreSession() {
-  if (!CONFIGURED) { const p = offlineLoad(); if (p) { const r = offlineUser(p.name); emit(r); } return; }
+  if (!CONFIGURED) { if (sessionStorage.getItem('ca.tabuid')) emit(offlineUser()); return; }
   onAuthStateChanged(auth, async (user) => {
     if (!user) return;
     const profile = await loadProfile(user.uid) || await createProfile(user, user.displayName || 'Player');
@@ -105,7 +136,7 @@ async function createProfile(user, name) {
   return { ...profile, uid: user.uid };
 }
 export async function loadProfile(uid) {
-  if (!CONFIGURED) return offlineLoad();
+  if (!CONFIGURED) { const id = tabIdentity(); const p = offlineLoad(); return p ? { ...p, ...(id.main ? {} : { uid: id.uid, name: sessionStorage.getItem('ca.tabname') || p.name, handle: sessionStorage.getItem('ca.tabhandle') || p.handle }) } : p; }
   const snap = await getDoc(doc(db, 'users', uid));
   return snap.exists() ? { uid, ...snap.data() } : null;
 }
@@ -155,7 +186,7 @@ export async function respondRequest(me, req, accept) {
   await updateDoc(doc(db, 'friendRequests', req.id), { status: 'accepted' });
 }
 export async function listFriends(me) {
-  if (!CONFIGURED) return [];
+  if (!CONFIGURED) return localFriends(me.uid);
   const out = [];
   for (const uid of me.friends || []) { const p = await loadProfile(uid); if (p) out.push({ uid, name: p.name, handle: p.handle }); }
   return out;

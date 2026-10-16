@@ -236,12 +236,13 @@ function bindAuthUI() {
   $('#btn-reset-binds').onclick = () => { Settings.binds = { ...DEFAULT_BINDS }; Settings.save(); renderBinds(); };
   $('#opt-sfx').checked = Settings.sfx; $('#opt-music').checked = Settings.music; $('#opt-touch').checked = Settings.forceTouch;
   // queue
-  $('#btn-queue').onclick = () => {
+  $('#btn-queue').onclick = async () => {
+    if (!(await Net.ready())) return;
     Net.socket.emit('queue:join', loadout()); setState('QUEUE');
     $('#btn-queue').classList.add('hidden'); $('#btn-cancel').classList.remove('hidden'); $('#queue-status').textContent = 'SEARCHING FOR OPPONENT…';
   };
-  $('#btn-cancel').onclick = () => { Net.socket.emit('queue:leave'); resetQueueUI(); };
-  $('#hud-menu-btn').onclick = () => Net.socket.emit('match:forfeit');
+  $('#btn-cancel').onclick = () => { Net.socket?.emit('queue:leave'); resetQueueUI(); };
+  $('#hud-menu-btn').onclick = () => Net.socket?.emit('match:forfeit');
 }
 function resetQueueUI() { setState('MENU'); $('#btn-queue').classList.remove('hidden'); $('#btn-cancel').classList.add('hidden'); $('#queue-status').textContent = ''; }
 
@@ -260,18 +261,21 @@ function pollPresence() {
 }
 function renderFriends() {
   const list = $('#friend-list'); list.replaceChildren();
-  if (!App.friends.length) list.append(h('div', { cls: 'dim' }, FB.CONFIGURED ? 'No friends yet — add one by user ID.' : 'Friends need Firebase (add your config in firebase-auth.js).'));
+  if (!App.friends.length) list.append(h('div', { cls: 'dim' }, 'No friends yet — add one by user ID (the @name under your name).'));
   const canInvite = App.party && App.party.leader === App.profile.uid && App.party.members.length < 2;
   App.friends.sort((a, b) => (App.presence[b.uid] ? 1 : 0) - (App.presence[a.uid] ? 1 : 0)).forEach((f) => {
     const on = !!App.presence[f.uid];
     list.append(h('div', { cls: 'item' }, h('span', { cls: 'dot' + (on ? ' on' : '') }), h('div', { cls: 'grow' }, h('b', {}, f.name), h('div', { cls: 'dim' }, '@' + f.handle + (on ? ' · online' : ' · offline'))),
-      on && canInvite ? h('button', { cls: 'btn small', onclick: () => Net.socket.emit('party:invite', { toUid: f.uid }) }, 'Invite') : null));
+      on && canInvite ? h('button', { cls: 'btn small', onclick: () => Net.send('party:invite', { toUid: f.uid }) }, 'Invite') : null));
   });
   const rl = $('#request-list'); rl.replaceChildren();
   if (!App.requests.length) rl.append(h('div', { cls: 'dim' }, 'No pending requests.'));
   App.requests.forEach((r) => rl.append(h('div', { cls: 'item' }, h('div', { cls: 'grow' }, h('b', {}, r.fromName), h('div', { cls: 'dim' }, '@' + r.fromHandle)),
-    h('button', { cls: 'btn small', onclick: async () => { await FB.respondRequest(App.profile, r, true); refreshFriends(); } }, 'Accept'),
-    h('button', { cls: 'btn small hot', onclick: () => FB.respondRequest(App.profile, r, false) }, '✕'))));
+    h('button', { cls: 'btn small', onclick: async () => {
+      if (r.local) { FB.addLocalFriend(App.profile.uid, { uid: r.from, name: r.fromName, handle: r.fromHandle }); Net.socket?.emit('friend:accept', { uid: r.from }); App.requests = App.requests.filter((x) => x !== r); }
+      else await FB.respondRequest(App.profile, r, true);
+      refreshFriends(); } }, 'Accept'),
+    h('button', { cls: 'btn small hot', onclick: () => { if (r.local) { App.requests = App.requests.filter((x) => x !== r); renderFriends(); } else FB.respondRequest(App.profile, r, false); } }, '✕'))));
 }
 function renderParty() {
   const p = App.party, box = $('#party-members'); box.replaceChildren();
@@ -284,12 +288,19 @@ function renderParty() {
 function bindFriendUI() {
   $('#btn-friend-add').onclick = async () => {
     const m = $('#friend-msg'); m.textContent = '';
+    if (!FB.CONFIGURED) {                                   // no Firebase: friend requests go through the game server
+      const handle = $('#friend-search').value.trim().toLowerCase(); if (!handle) return;
+      if (!(await Net.ready())) { m.textContent = 'Game server offline'; return; }
+      Net.socket.emit('friend:request', { handle }, (res) => { m.textContent = res?.error || `Request sent to ${res.name}`; if (!res?.error) $('#friend-search').value = ''; });
+      return;
+    }
     try { const t = await FB.sendFriendRequest(App.profile, $('#friend-search').value); m.textContent = `Request sent to ${t.name}`; $('#friend-search').value = ''; }
     catch (e) { m.textContent = e.message; }
   };
-  $('#btn-party-create').onclick = () => Net.socket.emit('party:create');
-  $('#btn-party-leave').onclick = () => Net.socket.emit('party:leave');
-  $('#btn-party-start').onclick = () => { Net.socket.emit('loadout:set', loadout()); Net.socket.emit('party:start'); };
+  $('#btn-party-create').onclick = () => Net.send('party:create');
+  $('#btn-party-leave').onclick = () => Net.send('party:leave');
+  $('#btn-party-start').onclick = () => { Net.send('loadout:set', loadout()); Net.send('party:start'); };
+  $('#chip-name').before(h('span', { id: 'net-status', cls: 'dim' }, '● offline'));
   setInterval(() => App.state !== 'AUTH' && pollPresence(), 8000);
 }
 function showPartyInvite({ partyId, from }) {
@@ -481,22 +492,55 @@ function updateDebris(dt) {
  * ===================================================================================== */
 const G = { active: false, myId: null, oppId: null, order: [], info: {}, ch: {}, snaps: [], last: null, k: { x: 0, z: 0 }, proj: new Map(), shake: 0, phase: '', bannerT: 0, lastSpeed: 0, ended: false };
 const Net = {
-  socket: null, sendTimer: null, pingTimer: null,
-  async connect() {
-    this.disconnect();
-    const token = await FB.getIdToken();
-    if (!window.io) { toast('Game server offline - run "npm start" in the arena folder (menus still work)'); return; }
-    const s = (this.socket = window.io(window.SERVER_URL, { auth: { token, uid: App.profile.uid, name: App.profile.name }, transports: ['websocket', 'polling'] }));
-    s.on('connect', () => { s.emit('loadout:set', loadout()); pollPresence(); });
-    s.on('connect_error', (e) => toast('Server: ' + e.message));
-    s.on('toast', toast);
-    s.on('party:state', (p) => { App.party = p; renderParty(); renderFriends(); });
-    s.on('party:invited', showPartyInvite);
-    s.on('match:start', startMatch);
-    s.on('snap', onSnap);
-    s.on('match:end', endMatch);
-    this.pingTimer = setInterval(() => { const t = performance.now(); s.emit('ping_', t, () => { $('#ping').textContent = Math.round(performance.now() - t) + ' ms'; }); }, 2000);
+  socket: null, sendTimer: null, pingTimer: null, lastErrToast: 0, connecting: null, _lib: null,
+  setStatus(on) { const e = $('#net-status'); if (e) { e.textContent = on ? '● online' : '● offline'; e.style.color = on ? 'var(--green)' : 'var(--warn)'; } },
+  /** Load socket.io client from the game server (non-blocking; free hosts can take ~1 min to wake up). */
+  loadLib() {
+    if (window.io) return Promise.resolve(true);
+    if (this._lib) return this._lib;
+    return (this._lib = new Promise((res) => {
+      const sc = document.createElement('script'); sc.src = window.SERVER_URL + '/socket.io/socket.io.js';
+      const t = setTimeout(() => { sc.remove(); this._lib = null; res(false); }, 70000);
+      sc.onload = () => { clearTimeout(t); res(!!window.io); };
+      sc.onerror = () => { clearTimeout(t); sc.remove(); this._lib = null; res(false); };
+      document.head.append(sc);
+    }));
   },
+  connect() {
+    if (this.connecting) return this.connecting;
+    return (this.connecting = (async () => {
+      this.disconnect(); this.setStatus(false);
+      if (!App.profile) return;
+      if (!(await this.loadLib())) { toast('Game server unreachable — it will retry when you press a button'); return; }
+      const token = await FB.getIdToken();
+      const s = (this.socket = window.io(window.SERVER_URL, { auth: { token, uid: App.profile.uid, name: App.profile.name, handle: App.profile.handle || '' }, transports: ['websocket', 'polling'] }));
+      s.on('connect', () => { this.setStatus(true); s.emit('loadout:set', loadout()); pollPresence(); });
+      s.on('disconnect', () => this.setStatus(false));
+      s.on('connect_error', (e) => { this.setStatus(false); if (Date.now() - this.lastErrToast > 6000) { this.lastErrToast = Date.now(); toast('Server: ' + e.message); } });
+      s.on('toast', toast);
+      s.on('party:state', (p) => { App.party = p; renderParty(); renderFriends(); });
+      s.on('party:invited', showPartyInvite);
+      s.on('friend:request', (r) => {          // friend system used when Firebase isn't configured
+        if (App.requests.some((x) => x.id === r.fromUid)) return;
+        App.requests.push({ id: r.fromUid, from: r.fromUid, fromName: r.fromName, fromHandle: r.fromHandle, local: true }); renderFriends(); toast(`Friend request from ${r.fromName}`);
+      });
+      s.on('friend:added', (f) => { FB.addLocalFriend(App.profile.uid, f); refreshFriends(); toast(`${f.name} is now your friend`); });
+      s.on('match:start', startMatch);
+      s.on('snap', onSnap);
+      s.on('match:end', endMatch);
+      this.pingTimer = setInterval(() => { const t = performance.now(); s.emit('ping_', t, () => { $('#ping').textContent = Math.round(performance.now() - t) + ' ms'; }); }, 2000);
+    })().finally(() => { this.connecting = null; }));
+  },
+  /** Resolves true once a live connection exists (connects / wakes the server if needed). Never throws. */
+  async ready() {
+    if (this.socket?.connected) return true;
+    toast('Connecting to game server…');
+    if (!this.socket) await this.connect();
+    if (this.socket && !this.socket.connected) await new Promise((r) => { const t = setTimeout(r, 25000); this.socket.once('connect', () => { clearTimeout(t); r(); }); });
+    if (this.socket?.connected) return true;
+    toast('Cannot reach the game server — check SERVER_URL in config.js'); return false;
+  },
+  send(ev, ...args) { this.ready().then((ok) => ok && this.socket.emit(ev, ...args)); },
   disconnect() { clearInterval(this.pingTimer); clearInterval(this.sendTimer); this.socket?.disconnect(); this.socket = null; }
 };
 
@@ -665,7 +709,7 @@ FB.onUser(async (r) => {
   App.profile.equipped = App.profile.equipped || { arch: 'blade', skin: 'neon_cyan' };
   App.profile.inventory = App.profile.inventory || ['neon_cyan', 'crimson_pulse']; App.profile.friends = App.profile.friends || [];
   setState('MENU'); showScreen('menu'); Preview.rebuild(); renderAllMenus();
-  await Net.connect(); SFX.startMusic();
+  Net.connect(); SFX.startMusic();
   App.stopWatch?.(); App.stopWatch = FB.watchRequests(App.profile, (reqs) => { App.requests = reqs; renderFriends(); if (reqs.length) toast(`${reqs.length} friend request(s)`); }, refreshFriends);
   refreshFriends();
 });

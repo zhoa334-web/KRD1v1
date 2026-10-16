@@ -27,6 +27,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 // Monetization stub: wire Stripe/Paddle here, then grant the skin via firebase-admin on webhook.
+app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size, online: online.size }));   // uptime pings / host health check
 app.post('/api/checkout', (_req, res) => res.status(501).json({ error: 'Payment provider not configured' }));
 
 const server = http.createServer(app);
@@ -34,6 +35,7 @@ const io = new Server(server, { cors: { origin: '*' }, pingInterval: 10000, ping
 
 // ---------- state ----------
 const online = new Map();   // uid -> socket.id
+const handles = new Map();  // lowercase handle -> uid (friend requests when Firebase isn't used)
 const queue = [];           // sockets waiting for a public match
 const parties = new Map();  // partyId -> { id, leader, members:[uid] }
 const partyOf = new Map();  // uid -> partyId
@@ -53,6 +55,7 @@ io.use(async (socket, next) => {
       socket.data.uid = String(uid || 'anon_' + (++uidCounter)).slice(0, 64);
     }
     socket.data.name = String(name || 'Player').slice(0, 20);
+    socket.data.handle = String((socket.handshake.auth || {}).handle || '').slice(0, 32).toLowerCase();
     next();
   } catch (e) { next(new Error('auth failed')); }
 });
@@ -60,6 +63,20 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
   const uid = socket.data.uid;
   online.set(uid, socket.id);
+  if (socket.data.handle) handles.set(socket.data.handle, uid);
+
+  // ---------- friends (lightweight, used when Firebase isn't configured) ----------
+  socket.on('friend:request', ({ handle } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const tuid = handles.get(String(handle || '').trim().toLowerCase()), t = tuid && sockByUid(tuid);
+    if (!t) return reply({ error: 'Player not found (they must be online)' });
+    if (tuid === uid) return reply({ error: "That's you!" });
+    t.emit('friend:request', { fromUid: uid, fromName: socket.data.name, fromHandle: socket.data.handle });
+    reply({ ok: true, name: t.data.name });
+  });
+  socket.on('friend:accept', ({ uid: other } = {}) => {
+    const t = sockByUid(other); if (t) t.emit('friend:added', { uid, name: socket.data.name, handle: socket.data.handle });
+  });
 
   // ---------- presence ----------
   socket.on('presence:get', (uids, cb) => {
@@ -144,7 +161,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    if (online.get(uid) === socket.id) online.delete(uid);
+    if (online.get(uid) === socket.id) { online.delete(uid); if (handles.get(socket.data.handle) === uid) handles.delete(socket.data.handle); }
     const qi = queue.indexOf(socket); if (qi >= 0) queue.splice(qi, 1);
     leaveParty();
     const r = rooms.get(socket.data.room);

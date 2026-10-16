@@ -259,11 +259,15 @@ body.touch.match #touch-layer{display:block}
   "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
 } }
 </script>
+<script src="config.js"></script>
 <script>
-  // Works under Live Server ("Go Live") AND under `npm start`.
-  // Same-origin when served by the Node server (port 3000); otherwise point at the Node server on localhost:3000.
-  window.SERVER_URL = (location.port === '3000' || location.protocol === 'https:') ? location.origin : 'http://' + (location.hostname || 'localhost') + ':3000';
-  document.write('<script src="' + window.SERVER_URL + '/socket.io/socket.io.js"><\/script>');
+  // Where the game server lives. Set SERVER_URL_OVERRIDE in config.js to your hosted URL (always-online).
+  // Otherwise: same origin when served by the Node server / https host; localhost:3000 when using Live Server.
+  (function () {
+    var o = window.SERVER_URL_OVERRIDE;
+    window.SERVER_URL = o ? String(o).replace(/\/+$/, '') :
+      ((location.port === '3000' || location.protocol === 'https:') ? location.origin : 'http://' + (location.hostname || 'localhost') + ':3000');
+  })();
 </script>
 <script src="shared.js"></script>
 <script type="module" src="main.js"></script>
